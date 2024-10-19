@@ -85,18 +85,26 @@ fn spawn_command(command_with_args: Vec<String>, command_number: usize) {
     let mut child = Command::new(command_with_args.get(0).expect("Command should be defined"))
         .args(&command_with_args[1..])
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("Failed to start process");
 
-    {
-        let stdout = child.stdout.as_mut().unwrap();
-        let stdout_reader = BufReader::new(stdout);
-        let stdout_lines = stdout_reader.lines();
-
-        for line in stdout_lines {
+    let stdout = BufReader::new(child.stdout.take().expect("Cannot reference stdout"));
+    let stdout_handle = thread::spawn(move || {
+        for line in stdout.lines() {
             println!("[{}]: {}", command_number, line.expect("stdout to be line"));
         }
-    }
+    });
+
+    let stderr = BufReader::new(child.stderr.take().expect("Cannot reference stderr"));
+    let stderr_handle = thread::spawn(move || {
+        for line in stderr.lines() {
+            println!("[{}]: {}", command_number, line.expect("stdout to be line"));
+        }
+    });
+
+    stdout_handle.join().unwrap();
+    stderr_handle.join().unwrap();
 
     let status_code = child.wait().unwrap();
 
