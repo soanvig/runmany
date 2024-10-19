@@ -1,8 +1,9 @@
 [package]
 name = "runmany"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Easily run multiple long-running commands in parallel."
 license = "GPL-3.0"
-
-[dependencies]
+repository = "https://github.com/soanvig/runmany"
+readme = "README.md"
+keywords = ["system", "process", "many"]
