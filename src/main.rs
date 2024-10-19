@@ -118,6 +118,9 @@ fn parse_args<'a>(args: &'a mut Vec<String>) -> Vec<&'a [String]> {
     args.remove(0);
 
     args.split(|arg| arg == "::")
-        .filter(|part| part.len() > 0)
+        .enumerate()
+        // Keep first part as possibly empty
+        .filter(|(index, part)| *index == 0 || part.len() > 0)
+        .map(|(_, part)| part)
         .collect()
 }
