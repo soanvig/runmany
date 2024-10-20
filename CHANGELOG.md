@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/soanvig/runmany/compare/v0.2.3...v0.3.0) (2024-10-20)
+
+
+### Features
+
+* add output coloring and --no-color flag ([850f25b](https://github.com/soanvig/runmany/commit/850f25b8d6f92e078561583ef59b5255beb4095f)), closes [#1](https://github.com/soanvig/runmany/issues/1)
+
 ## 0.2.3 (2024-10-20)
 
 
