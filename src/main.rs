@@ -1,11 +1,16 @@
+use colored::*;
 use std::env;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, ExitCode, Stdio};
 use std::thread;
 
+static colors: [&str; 5] = ["green", "yellow", "blue", "magenta", "cyan"];
+
+#[derive(Clone)]
 struct RunmanyOptions {
     help: bool,
     version: bool,
+    no_color: bool,
 }
 
 fn main() -> ExitCode {
@@ -25,7 +30,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
 
-        spawn_commands(commands);
+        spawn_commands(commands, &runmany_options);
     } else {
         // No arguments given to runmany
         print_help();
@@ -44,6 +49,7 @@ fn print_help() {
     println!("Flags:");
     println!("  -h, --help - print help");
     println!("  -v, --version - print version");
+    println!("  --no-color - do not color command output");
 }
 
 fn print_version() {
@@ -55,17 +61,23 @@ fn runmany_args_to_options(args: &&[String]) -> RunmanyOptions {
     // todo: wtf is wrong with those types :D
     let help = args.contains(&"-h".to_string()) || args.contains(&"--help".to_string());
     let version = args.contains(&"-v".to_string()) || args.contains(&"--version".to_string());
+    let no_color = args.contains(&"--no-color".to_string());
 
-    RunmanyOptions { help, version }
+    RunmanyOptions {
+        help,
+        version,
+        no_color,
+    }
 }
 
-fn spawn_commands(commands: &[&[String]]) {
+fn spawn_commands(commands: &[&[String]], options: &RunmanyOptions) {
     let mut handles = vec![];
 
     for (index, &command) in commands.iter().enumerate() {
         let command = command.to_vec();
+        let options = options.clone();
         let handle = thread::spawn(move || {
-            spawn_command(command, index + 1);
+            spawn_command(command, index + 1, options);
         });
         handles.push(handle);
     }
@@ -75,12 +87,23 @@ fn spawn_commands(commands: &[&[String]]) {
     }
 }
 
-fn spawn_command(command_with_args: Vec<String>, command_number: usize) {
-    println!(
+/// command_number has to start from 1
+fn spawn_command(command_with_args: Vec<String>, command_number: usize, options: RunmanyOptions) {
+    let color = colors[(command_number - 1) % colors.len()];
+
+    let print_color = move |str: String| {
+        if options.no_color {
+            println!("{}", str);
+        } else {
+            println!("{}", str.color(color));
+        }
+    };
+
+    print_color(format!(
         "[{}]: Spawning command: \"{}\"",
         command_number,
         command_with_args.join(" ")
-    );
+    ));
 
     let mut child = Command::new(command_with_args.get(0).expect("Command should be defined"))
         .args(&command_with_args[1..])
@@ -92,14 +115,22 @@ fn spawn_command(command_with_args: Vec<String>, command_number: usize) {
     let stdout = BufReader::new(child.stdout.take().expect("Cannot reference stdout"));
     let stdout_handle = thread::spawn(move || {
         for line in stdout.lines() {
-            println!("[{}]: {}", command_number, line.expect("stdout to be line"));
+            print_color(format!(
+                "[{}]: {}",
+                command_number,
+                line.expect("stdout to be line")
+            ));
         }
     });
 
     let stderr = BufReader::new(child.stderr.take().expect("Cannot reference stderr"));
     let stderr_handle = thread::spawn(move || {
         for line in stderr.lines() {
-            println!("[{}]: {}", command_number, line.expect("stdout to be line"));
+            print_color(format!(
+                "[{}]: {}",
+                command_number,
+                line.expect("stdout to be line")
+            ));
         }
     });
 
@@ -109,16 +140,19 @@ fn spawn_command(command_with_args: Vec<String>, command_number: usize) {
     let status_code = child.wait().unwrap();
 
     if status_code.success() {
-        println!("[{}]: Command finished successfully", command_number)
+        print_color(format!(
+            "[{}]: Command finished successfully",
+            command_number
+        ));
     } else {
-        println!(
+        print_color(format!(
             "[{}]: Command exited with status: {}",
             command_number,
             status_code
                 .code()
                 .map(|code| code.to_string())
                 .unwrap_or("unknown".to_string())
-        )
+        ));
     }
 }
 
