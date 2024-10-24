@@ -27,4 +27,7 @@ If you already have a Rust environment set up, you can use the cargo install com
 > cargo install runmany
 ```
 
-@TODO: add releases with built binaries
+## Notes
+
+1. Command's `stderr` is printed to `stdout` ([issue](https://github.com/soanvig/runmany/issues/10))
+2. Command's are run directly in the system ([issue](https://github.com/soanvig/runmany/issues/2))
