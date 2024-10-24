@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, ExitCode, Stdio};
 use std::thread;
 
-static colors: [&str; 5] = ["green", "yellow", "blue", "magenta", "cyan"];
+static COLORS: [&str; 5] = ["green", "yellow", "blue", "magenta", "cyan"];
 
 #[derive(Clone)]
 struct RunmanyOptions {
@@ -16,7 +16,8 @@ struct RunmanyOptions {
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
-    let parsed_args = parse_args(&mut args);
+    args.remove(0);
+    let parsed_args = parse_args(args);
     if let Some((runmany_params, commands)) = parsed_args.split_first() {
         let runmany_options = runmany_args_to_options(runmany_params);
 
@@ -57,7 +58,7 @@ fn print_version() {
     println!("v{}", version)
 }
 
-fn runmany_args_to_options(args: &&[String]) -> RunmanyOptions {
+fn runmany_args_to_options(args: &Vec<String>) -> RunmanyOptions {
     // todo: wtf is wrong with those types :D
     let help = args.contains(&"-h".to_string()) || args.contains(&"--help".to_string());
     let version = args.contains(&"-v".to_string()) || args.contains(&"--version".to_string());
@@ -70,11 +71,11 @@ fn runmany_args_to_options(args: &&[String]) -> RunmanyOptions {
     }
 }
 
-fn spawn_commands(commands: &[&[String]], options: &RunmanyOptions) {
+fn spawn_commands(commands: &[Vec<String>], options: &RunmanyOptions) {
     let mut handles = vec![];
 
-    for (index, &command) in commands.iter().enumerate() {
-        let command = command.to_vec();
+    for (index, command) in commands.iter().enumerate() {
+        let command = command.clone();
         let options = options.clone();
         let handle = thread::spawn(move || {
             spawn_command(command, index + 1, options);
@@ -89,7 +90,7 @@ fn spawn_commands(commands: &[&[String]], options: &RunmanyOptions) {
 
 /// command_number has to start from 1
 fn spawn_command(command_with_args: Vec<String>, command_number: usize, options: RunmanyOptions) {
-    let color = colors[(command_number - 1) % colors.len()];
+    let color = COLORS[(command_number - 1) % COLORS.len()];
 
     let print_color = move |str: String| {
         if options.no_color {
@@ -156,13 +157,28 @@ fn spawn_command(command_with_args: Vec<String>, command_number: usize, options:
     }
 }
 
-fn parse_args<'a>(args: &'a mut Vec<String>) -> Vec<&'a [String]> {
-    args.remove(0);
-
+fn parse_args<'a>(args: Vec<String>) -> Vec<Vec<String>> {
     args.split(|arg| arg == "::")
         .enumerate()
         // Keep first part as possibly empty
         .filter(|(index, part)| *index == 0 || part.len() > 0)
-        .map(|(_, part)| part)
+        .map(|(_, part)| part.to_vec())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_args_input(vec: Vec<&str>) -> Vec<String> {
+        vec.iter().map(|i| i.to_string()).collect()
+    }
+
+    #[test]
+    fn test_parse_args() {
+        let input = parse_args_input(vec![""]);
+        let expected: Vec<Vec<String>> = vec![parse_args_input(vec![""])];
+
+        assert_eq!(parse_args(input), expected);
+    }
 }
