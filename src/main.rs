@@ -1,4 +1,5 @@
 use colored::*;
+use core::fmt;
 use std::env;
 use std::io::{stdout, BufRead, BufReader, Write};
 use std::process::{Command, ExitCode, Stdio};
@@ -12,6 +13,7 @@ struct RunmanyOptions {
     help: bool,
     version: bool,
     no_color: bool,
+    shell: bool,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -53,13 +55,14 @@ impl<W: Write + std::fmt::Debug> Printer<W> {
             }
         };
 
-        self.writer
-            .write_all(
-                [self.prefix.as_bytes(), to_print.as_bytes()]
-                    .concat()
-                    .as_slice(),
-            )
-            .unwrap();
+        write!(self.writer, "{}", self.prefix).unwrap();
+
+        if let Some(color) = &self.color {
+            write!(self.writer, "{}", to_print.color(color.to_owned())).unwrap();
+        } else {
+            write!(self.writer, "{}", to_print).unwrap();
+        }
+
         self.writer.write_all(b"\n").unwrap();
     }
 }
@@ -107,6 +110,7 @@ fn print_help() {
     println!("  -h, --help - print help");
     println!("  -v, --version - print version");
     println!("  --no-color - do not color command output");
+    println!("  -s, --shell - run in shell (/bin/sh)");
 }
 
 fn print_version() {
@@ -119,11 +123,13 @@ fn runmany_args_to_options(args: &Vec<String>) -> RunmanyOptions {
     let help = args.contains(&"-h".to_string()) || args.contains(&"--help".to_string());
     let version = args.contains(&"-v".to_string()) || args.contains(&"--version".to_string());
     let no_color = args.contains(&"--no-color".to_string());
+    let shell = args.contains(&"-s".to_string()) || args.contains(&"--shell".to_string());
 
     RunmanyOptions {
         help,
         version,
         no_color,
+        shell,
     }
 }
 
@@ -133,15 +139,14 @@ fn spawn_commands(commands: &[Vec<String>], options: &RunmanyOptions) {
     for (index, command) in commands.iter().enumerate() {
         let command = command.clone();
         let options = options.clone();
-        let mut printer =
-            Printer::new(stdout()).set_color(COLORS[(index) % COLORS.len()].to_string());
+        let mut printer = Printer::new(stdout()).set_prefix(format!("[{}] ", index + 1));
 
         if !options.no_color {
-            printer = printer.set_prefix(format!("[{}]", index + 1));
+            printer = printer.set_color(COLORS[(index) % COLORS.len()].to_string());
         }
 
         let handle = thread::spawn(move || {
-            spawn_command(command, Arc::new(Mutex::new(printer)));
+            spawn_command(command, Arc::new(Mutex::new(printer)), &options);
         });
         handles.push(handle);
     }
@@ -155,18 +160,28 @@ fn spawn_commands(commands: &[Vec<String>], options: &RunmanyOptions) {
 ///
 /// todo: might need a refactor due to Arc<Mutex>> that requires locking. Maybe there is simple way to do it
 fn spawn_command<W: Write + Send + std::fmt::Debug + 'static>(
-    command_with_args: Vec<String>,
+    mut command: Vec<String>,
     printer: Arc<Mutex<Printer<W>>>,
+    options: &RunmanyOptions,
 ) -> Arc<Mutex<Printer<W>>> {
     let main_printer = printer.clone();
 
+    if options.shell {
+        // todo: move that to some "prepare command" and test separately
+        command = vec!["/bin/sh".to_string(), "-c".to_string(), command.join(" ")];
+    }
+
     main_printer.lock().unwrap().print(format!(
-        "Spawning command: \"{}\"",
-        command_with_args.join(" ")
+        "Spawning command: {}",
+        command
+            .iter()
+            .map(|arg| format!("'{}'", arg))
+            .collect::<Vec<String>>()
+            .join(" ")
     ));
 
-    let mut child = Command::new(command_with_args.get(0).expect("Command should be defined"))
-        .args(&command_with_args[1..])
+    let mut child = Command::new(command.get(0).expect("Command should be defined"))
+        .args(&command[1..])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -291,25 +306,36 @@ mod tests {
     fn test_runmany_args_to_options() {
         let input = to_vec_str(vec!["-v"]);
         let expected = RunmanyOptions {
-            help: false,
-            no_color: false,
             version: true,
+            ..Default::default()
         };
         assert_eq!(runmany_args_to_options(&input), expected);
 
         let input = to_vec_str(vec!["-h"]);
         let expected = RunmanyOptions {
             help: true,
-            no_color: false,
-            version: false,
+            ..Default::default()
         };
         assert_eq!(runmany_args_to_options(&input), expected);
 
         let input = to_vec_str(vec!["--no-color"]);
         let expected = RunmanyOptions {
-            help: false,
             no_color: true,
-            version: false,
+            ..Default::default()
+        };
+        assert_eq!(runmany_args_to_options(&input), expected);
+
+        let input = to_vec_str(vec!["--shell"]);
+        let expected = RunmanyOptions {
+            shell: true,
+            ..Default::default()
+        };
+        assert_eq!(runmany_args_to_options(&input), expected);
+
+        let input = to_vec_str(vec!["-s"]);
+        let expected = RunmanyOptions {
+            shell: true,
+            ..Default::default()
         };
         assert_eq!(runmany_args_to_options(&input), expected);
 
@@ -318,14 +344,13 @@ mod tests {
             help: true,
             no_color: true,
             version: true,
+            ..Default::default()
         };
         assert_eq!(runmany_args_to_options(&input), expected);
 
         let input = to_vec_str(vec!["--not-existing", "-n"]);
         let expected = RunmanyOptions {
-            help: false,
-            no_color: false,
-            version: false,
+            ..Default::default()
         };
         assert_eq!(runmany_args_to_options(&input), expected);
     }
@@ -335,9 +360,10 @@ mod tests {
         let printer = spawn_command(
             to_vec_str(vec!["echo", "foobar"]),
             Arc::new(Mutex::new(Printer::new(vec![]))),
+            &RunmanyOptions::default(),
         );
 
-        let expected = "Spawning command: \"echo foobar\"\nfoobar\nCommand finished successfully\n";
+        let expected = "Spawning command: 'echo' 'foobar'\nfoobar\nCommand finished successfully\n";
 
         assert_eq!(printer.lock().unwrap().writer, expected.as_bytes());
     }
@@ -349,9 +375,26 @@ mod tests {
             Arc::new(Mutex::new(
                 Printer::new(vec![]).set_prefix("[foo] ".to_string()),
             )),
+            &RunmanyOptions::default(),
         );
 
-        let expected = "[foo] Spawning command: \"echo foobar\"\n[foo] foobar\n[foo] Command finished successfully\n";
+        let expected = "[foo] Spawning command: 'echo' 'foobar'\n[foo] foobar\n[foo] Command finished successfully\n";
+
+        assert_eq!(printer.lock().unwrap().writer, expected.as_bytes());
+    }
+
+    #[test]
+    fn test_spawning_in_shell() {
+        let printer = spawn_command(
+            to_vec_str(vec!["echo", "foo", "&&", "echo", "bar"]),
+            Arc::new(Mutex::new(Printer::new(vec![]))),
+            &RunmanyOptions {
+                shell: true,
+                ..Default::default()
+            },
+        );
+
+        let expected = "Spawning command: '/bin/sh' '-c' 'echo foo && echo bar'\nfoo\nbar\nCommand finished successfully\n";
 
         assert_eq!(printer.lock().unwrap().writer, expected.as_bytes());
     }

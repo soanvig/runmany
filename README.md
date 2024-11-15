@@ -13,6 +13,9 @@ No more spawning processes in shell's background (`&`) or starting multiple term
 
 # You can run more commands
 > runmany :: npm watch :: npm serve :: npm test:watch
+
+# See options
+> runmany -h
 ```
 
 Now `runmany` will run all commands in parallel, and exit when all exit.
