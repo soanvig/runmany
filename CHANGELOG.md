@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/soanvig/runmany/compare/v0.3.0...v0.4.0) (2025-01-03)
+
+
+### Features
+
+* add spawn in shell option ([a9e992a](https://github.com/soanvig/runmany/commit/a9e992a86104bf1532085a5791604045eae0d5da)), closes [#2](https://github.com/soanvig/runmany/issues/2)
+
 ## [0.3.0](https://github.com/soanvig/runmany/compare/v0.2.3...v0.3.0) (2024-10-20)
 
 
